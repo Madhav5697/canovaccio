@@ -311,7 +311,7 @@ export function registerSocketHandlers(io: AppServer): void {
     });
 
     // ── DISCONNECT ─────────────────────────────────────────────────────────────
-    socket.on('disconnect', (reason) => {
+    socket.on('disconnect', (reason: string) => {
       console.log(`[Socket] Client disconnected: ${socket.id} - Reason: ${reason}`);
       handleDisconnect(socket, io);
     });
