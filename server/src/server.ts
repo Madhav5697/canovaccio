@@ -36,8 +36,8 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEve
     // Ping settings for connection health
     pingTimeout: 20000,
     pingInterval: 25000,
-    // Max payload to prevent abuse
-    maxHttpBufferSize: 1e5, // 100 KB
+    // Max payload to allow smooth images and complex strokes
+    maxHttpBufferSize: 1e7, // 10 MB
     transports: ['websocket', 'polling'],
   }
 );

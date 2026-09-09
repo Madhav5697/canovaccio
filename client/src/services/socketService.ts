@@ -13,9 +13,7 @@ import {
   ObjectDeletePayload,
 } from '../types';
 
-// Server URL: in dev, Vite proxies /socket.io to localhost:3001
-// In production, VITE_SERVER_URL should be set to the deployed server URL
-const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? '';
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '');
 
 // Socket.IO event type definitions
 interface ServerToClientEvents {

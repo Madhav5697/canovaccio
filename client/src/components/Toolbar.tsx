@@ -70,12 +70,6 @@ const TextIcon = () => (
   </svg>
 );
 
-const StickyIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z" /><path d="M15 3v6h6" />
-  </svg>
-);
-
 const ImageIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
@@ -134,6 +128,7 @@ interface ToolbarProps {
   onRedo: () => void;
   onExport: () => void;
   onHelp: () => void;
+  isDark?: boolean;
 }
 
 interface ToolButtonProps {
@@ -141,10 +136,11 @@ interface ToolButtonProps {
   tooltip: string;
   isActive?: boolean;
   disabled?: boolean;
+  isDark?: boolean;
   onClick: () => void;
 }
 
-const ToolButton: React.FC<ToolButtonProps> = ({ icon, tooltip, isActive, disabled, onClick }) => (
+const ToolButton: React.FC<ToolButtonProps> = ({ icon, tooltip, isActive, disabled, isDark = true, onClick }) => (
   <Tooltip content={tooltip} position="right">
     <button
       onClick={onClick}
@@ -152,10 +148,14 @@ const ToolButton: React.FC<ToolButtonProps> = ({ icon, tooltip, isActive, disabl
       className={`
         p-2 rounded-xl transition-all duration-150 flex items-center justify-center
         ${isActive
-          ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
-          : 'text-gray-400 hover:text-white hover:bg-gray-800'
+          ? isDark
+            ? 'bg-zinc-100 text-zinc-950 shadow-md shadow-white/10'
+            : 'bg-zinc-900 text-white shadow-md shadow-black/10'
+          : isDark
+          ? 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+          : 'text-gray-500 hover:text-black hover:bg-gray-100'
         }
-        ${disabled ? 'opacity-30 cursor-not-allowed hover:bg-transparent hover:text-gray-400' : 'cursor-pointer'}
+        ${disabled ? 'opacity-30 cursor-not-allowed hover:bg-transparent' : 'cursor-pointer'}
       `}
       aria-label={tooltip}
       aria-pressed={isActive}
@@ -165,11 +165,11 @@ const ToolButton: React.FC<ToolButtonProps> = ({ icon, tooltip, isActive, disabl
   </Tooltip>
 );
 
-const SectionDivider = ({ label }: { label?: string }) => (
+const SectionDivider = ({ label, isDark = true }: { label?: string; isDark?: boolean }) => (
   <div className="w-full my-1">
-    <div className="w-full h-px bg-gray-800" />
+    <div className={`w-full h-px ${isDark ? 'bg-zinc-800' : 'bg-gray-200'}`} />
     {label && (
-      <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 text-center mt-1">
+      <div className={`text-[9px] font-bold uppercase tracking-wider text-center mt-1 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>
         {label}
       </div>
     )}
@@ -190,6 +190,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onRedo,
   onExport,
   onHelp,
+  isDark = true,
 }) => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -214,42 +215,46 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   return (
     <aside
-      className="flex flex-col items-center p-1.5 bg-gray-900/95 border border-gray-700/60 rounded-2xl shadow-2xl w-13 backdrop-blur-md overflow-y-auto max-h-[calc(100vh-100px)] scrollbar-none"
+      className={`flex flex-col items-center p-1.5 border rounded-2xl shadow-2xl w-13 backdrop-blur-md overflow-y-auto max-h-[calc(100vh-100px)] scrollbar-none transition-colors duration-300 ${
+        isDark
+          ? 'bg-zinc-900/90 border-zinc-800 text-zinc-100 shadow-2xl'
+          : 'bg-white/90 border-gray-200/90 text-gray-900 shadow-xl'
+      }`}
       role="toolbar"
       aria-label="Drawing tools"
     >
       {/* SECTION: DRAWING */}
-      <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 text-center mb-1">
+      <div className={`text-[9px] font-bold uppercase tracking-wider text-center mb-1 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>
         Draw
       </div>
       <div className="flex flex-col gap-1">
-        <ToolButton icon={<PencilIcon />} tooltip="Pencil (P)" isActive={tool === 'pencil'} onClick={() => onToolChange('pencil')} />
-        <ToolButton icon={<BrushIcon />} tooltip="Brush (B)" isActive={tool === 'brush'} onClick={() => onToolChange('brush')} />
-        <ToolButton icon={<EraserIcon />} tooltip="Eraser (E)" isActive={tool === 'eraser'} onClick={() => onToolChange('eraser')} />
-        <ToolButton icon={<FillIcon />} tooltip="Fill / Bucket (F)" isActive={tool === 'fill'} onClick={() => onToolChange('fill')} />
+        <ToolButton icon={<PencilIcon />} tooltip="Pencil (P)" isActive={tool === 'pencil'} isDark={isDark} onClick={() => onToolChange('pencil')} />
+        <ToolButton icon={<BrushIcon />} tooltip="Brush (B)" isActive={tool === 'brush'} isDark={isDark} onClick={() => onToolChange('brush')} />
+        <ToolButton icon={<EraserIcon />} tooltip="Eraser (E)" isActive={tool === 'eraser'} isDark={isDark} onClick={() => onToolChange('eraser')} />
+        <ToolButton icon={<FillIcon />} tooltip="Fill / Bucket (F)" isActive={tool === 'fill'} isDark={isDark} onClick={() => onToolChange('fill')} />
       </div>
 
-      <SectionDivider label="Shapes" />
+      <SectionDivider label="Shapes" isDark={isDark} />
 
       {/* SECTION: SHAPES */}
       <div className="flex flex-col gap-1">
-        <ToolButton icon={<LineIcon />} tooltip="Line (L)" isActive={tool === 'line'} onClick={() => onToolChange('line')} />
-        <ToolButton icon={<ArrowIcon />} tooltip="Arrow" isActive={tool === 'arrow'} onClick={() => onToolChange('arrow')} />
-        <ToolButton icon={<RectIcon />} tooltip="Rectangle (R)" isActive={tool === 'rectangle'} onClick={() => onToolChange('rectangle')} />
-        <ToolButton icon={<TriangleIcon />} tooltip="Triangle" isActive={tool === 'triangle'} onClick={() => onToolChange('triangle')} />
-        <ToolButton icon={<CircleIcon />} tooltip="Circle (C)" isActive={tool === 'circle'} onClick={() => onToolChange('circle')} />
+        <ToolButton icon={<LineIcon />} tooltip="Line (L)" isActive={tool === 'line'} isDark={isDark} onClick={() => onToolChange('line')} />
+        <ToolButton icon={<ArrowIcon />} tooltip="Arrow" isActive={tool === 'arrow'} isDark={isDark} onClick={() => onToolChange('arrow')} />
+        <ToolButton icon={<RectIcon />} tooltip="Rectangle (R)" isActive={tool === 'rectangle'} isDark={isDark} onClick={() => onToolChange('rectangle')} />
+        <ToolButton icon={<TriangleIcon />} tooltip="Triangle" isActive={tool === 'triangle'} isDark={isDark} onClick={() => onToolChange('triangle')} />
+        <ToolButton icon={<CircleIcon />} tooltip="Circle (C)" isActive={tool === 'circle'} isDark={isDark} onClick={() => onToolChange('circle')} />
       </div>
 
-      <SectionDivider label="Objects" />
+      <SectionDivider label="Objects" isDark={isDark} />
 
       {/* SECTION: OBJECTS */}
       <div className="flex flex-col gap-1">
-        <ToolButton icon={<SelectIcon />} tooltip="Select / Move (V)" isActive={tool === 'select'} onClick={() => onToolChange('select')} />
-        <ToolButton icon={<TextIcon />} tooltip="Text Tool (T)" isActive={tool === 'text'} onClick={() => onToolChange('text')} />
-        <ToolButton icon={<StickyIcon />} tooltip="Sticky Note" isActive={tool === 'sticky'} onClick={() => onToolChange('sticky')} />
+        <ToolButton icon={<SelectIcon />} tooltip="Select / Move (V)" isActive={tool === 'select'} isDark={isDark} onClick={() => onToolChange('select')} />
+        <ToolButton icon={<TextIcon />} tooltip="Text Tool (T)" isActive={tool === 'text'} isDark={isDark} onClick={() => onToolChange('text')} />
         <ToolButton
           icon={<ImageIcon />}
           tooltip="Upload Image"
+          isDark={isDark}
           onClick={() => fileInputRef.current?.click()}
         />
         <input
@@ -262,37 +267,39 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         />
       </div>
 
-      <SectionDivider label="Canvas" />
+      <SectionDivider label="Canvas" isDark={isDark} />
 
       {/* SECTION: CANVAS */}
       <div className="flex flex-col gap-1">
-        <ToolButton icon={<PanIcon />} tooltip="Pan Canvas (Hold Space)" isActive={tool === 'pan'} onClick={() => onToolChange('pan')} />
+        <ToolButton icon={<PanIcon />} tooltip="Pan Canvas (Hold Space)" isActive={tool === 'pan'} isDark={isDark} onClick={() => onToolChange('pan')} />
       </div>
 
-      <SectionDivider label="Action" />
+      <SectionDivider label="Action" isDark={isDark} />
 
       {/* SECTION: ACTIONS */}
       <div className="flex flex-col gap-1">
-        <ToolButton icon={<UndoIcon />} tooltip="Undo (Ctrl+Z)" disabled={!canUndo} onClick={onUndo} />
-        <ToolButton icon={<RedoIcon />} tooltip="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={onRedo} />
+        <ToolButton icon={<UndoIcon />} tooltip="Undo (Ctrl+Z)" disabled={!canUndo} isDark={isDark} onClick={onUndo} />
+        <ToolButton icon={<RedoIcon />} tooltip="Redo (Ctrl+Shift+Z)" disabled={!canRedo} isDark={isDark} onClick={onRedo} />
         <Tooltip content={showClearConfirm ? 'Click to confirm' : 'Clear Canvas'} position="right">
           <button
             onClick={handleClearClick}
             className={`p-2 rounded-xl transition-all ${
               showClearConfirm
-                ? 'bg-red-600 text-white animate-pulse'
-                : 'text-gray-400 hover:text-red-400 hover:bg-gray-800'
+                ? 'bg-rose-600 text-white animate-pulse'
+                : isDark
+                ? 'text-zinc-400 hover:text-rose-400 hover:bg-zinc-800'
+                : 'text-gray-500 hover:text-rose-600 hover:bg-gray-100'
             }`}
             aria-label="Clear canvas"
           >
             <TrashIcon />
           </button>
         </Tooltip>
-        <ToolButton icon={<ExportIcon />} tooltip="Export Canvas (Ctrl+S)" onClick={onExport} />
-        <ToolButton icon={<HelpIcon />} tooltip="Shortcuts & Help (?)" onClick={onHelp} />
+        <ToolButton icon={<ExportIcon />} tooltip="Export Canvas (Ctrl+S)" isDark={isDark} onClick={onExport} />
+        <ToolButton icon={<HelpIcon />} tooltip="Shortcuts & Help (?)" isDark={isDark} onClick={onHelp} />
       </div>
 
-      <SectionDivider />
+      <SectionDivider isDark={isDark} />
 
       {/* Brush size slider */}
       <Tooltip content={`Brush: ${brushSize}px`} position="right">
@@ -303,11 +310,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             max={50}
             value={brushSize}
             onChange={(e) => onBrushSizeChange(Number(e.target.value))}
-            className="w-8 h-1 bg-gray-700 rounded-full appearance-none cursor-pointer accent-blue-500"
+            className={`w-8 h-1 rounded-full appearance-none cursor-pointer ${
+              isDark ? 'bg-zinc-700 accent-zinc-100' : 'bg-gray-300 accent-zinc-900'
+            }`}
             aria-label="Brush size"
           />
           <div
-            className="rounded-full mt-1.5"
+            className="rounded-full mt-1.5 shadow-sm border border-black/10"
             style={{
               width: Math.min(Math.max(brushSize / 2, 4), 16),
               height: Math.min(Math.max(brushSize / 2, 4), 16),

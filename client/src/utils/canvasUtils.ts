@@ -265,74 +265,6 @@ export function drawText(
   ctx.restore();
 }
 
-/**
- * Render a sticky note card onto the canvas.
- */
-export function drawStickyNote(
-  ctx: CanvasRenderingContext2D,
-  point: Point,
-  text: string,
-  noteColor: string = '#FEF08A', // Yellow default
-  width: number = 180,
-  height: number = 180
-): void {
-  ctx.save();
-
-  // Shadow
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
-  ctx.shadowBlur = 10;
-  ctx.shadowOffsetX = 3;
-  ctx.shadowOffsetY = 5;
-
-  // Background card
-  ctx.fillStyle = noteColor;
-  const radius = 8;
-  const { x, y } = point;
-
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + width - radius, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
-  ctx.lineTo(x + width, y + height - radius);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
-  ctx.lineTo(x + radius, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
-  ctx.fill();
-
-  // Reset shadow for text
-  ctx.shadowColor = 'transparent';
-
-  // Text inside note
-  ctx.fillStyle = '#1F2937'; // Dark gray text
-  ctx.font = '500 16px Inter, system-ui, sans-serif';
-  ctx.textBaseline = 'top';
-
-  const padding = 14;
-  const maxWidth = width - padding * 2;
-  const words = text.split(' ');
-  let line = '';
-  let currentY = y + padding;
-  const lineHeight = 22;
-
-  for (let n = 0; n < words.length; n++) {
-    const testLine = line + words[n] + ' ';
-    const metrics = ctx.measureText(testLine);
-    const testWidth = metrics.width;
-    if (testWidth > maxWidth && n > 0) {
-      ctx.fillText(line, x + padding, currentY);
-      line = words[n] + ' ';
-      currentY += lineHeight;
-    } else {
-      line = testLine;
-    }
-  }
-  ctx.fillText(line, x + padding, currentY);
-
-  ctx.restore();
-}
 
 /**
  * Render an uploaded image object onto the canvas.
@@ -367,40 +299,51 @@ export function drawImageObject(
 }
 
 /**
- * Fast 4-way stack-based flood fill algorithm on canvas context.
+ * Helper to parse any hex or rgb color string into [r, g, b, a].
+ */
+function parseColorToRgba(colorStr: string): [number, number, number, number] {
+  if (colorStr.startsWith('#')) {
+    let hex = colorStr.slice(1);
+    if (hex.length === 3) {
+      hex = hex.split('').map((c) => c + c).join('');
+    }
+    if (hex.length === 6) {
+      const num = parseInt(hex, 16);
+      return [(num >> 16) & 255, (num >> 8) & 255, num & 255, 255];
+    }
+  }
+  const match = colorStr.match(/\d+/g);
+  if (match && match.length >= 3) {
+    return [parseInt(match[0], 10), parseInt(match[1], 10), parseInt(match[2], 10), 255];
+  }
+  return [0, 0, 0, 255];
+}
+
+/**
+ * Fast, leak-proof 4-way flood fill algorithm on canvas context with zoom & pan support.
  */
 export function floodFill(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   startX: number,
   startY: number,
-  fillColorHex: string
+  fillColorHex: string,
+  zoom: number = 1,
+  pan: Point = { x: 0, y: 0 }
 ): void {
   const dpr = window.devicePixelRatio || 1;
-  const px = Math.floor(startX * dpr);
-  const py = Math.floor(startY * dpr);
+  // Calculate buffer coordinate by applying current pan and zoom
+  const px = Math.floor((startX * zoom + pan.x) * dpr);
+  const py = Math.floor((startY * zoom + pan.y) * dpr);
 
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imgData.data;
   const width = canvas.width;
   const height = canvas.height;
-
   if (px < 0 || px >= width || py < 0 || py >= height) return;
 
-  // Convert hex color to RGBA
-  const tempEl = document.createElement('div');
-  tempEl.style.color = fillColorHex;
-  document.body.appendChild(tempEl);
-  const rgbStr = getComputedStyle(tempEl).color;
-  document.body.removeChild(tempEl);
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
 
-  const rgbMatch = rgbStr.match(/\d+/g);
-  if (!rgbMatch || rgbMatch.length < 3) return;
-
-  const targetR = parseInt(rgbMatch[0], 10);
-  const targetG = parseInt(rgbMatch[1], 10);
-  const targetB = parseInt(rgbMatch[2], 10);
-  const targetA = 255;
+  const [targetR, targetG, targetB, targetA] = parseColorToRgba(fillColorHex);
 
   const startPos = (py * width + px) * 4;
   const startR = data[startPos];
@@ -410,6 +353,7 @@ export function floodFill(
 
   // Already the target color
   if (
+    startA > 200 &&
     Math.abs(startR - targetR) < 5 &&
     Math.abs(startG - targetG) < 5 &&
     Math.abs(startB - targetB) < 5 &&
@@ -418,47 +362,77 @@ export function floodFill(
     return;
   }
 
-  function colorMatch(pos: number): boolean {
-    const r = data[pos];
-    const g = data[pos + 1];
-    const b = data[pos + 2];
-    const a = data[pos + 3];
+  // Determine matching criteria:
+  // If clicked on an empty / transparent pixel, fill transparent pixels until hitting stroke boundary (alpha >= 25)
+  // If clicked on a colored area, match similar colors within tolerance 35
+  const isMatch = startA < 25
+    ? (pos: number) => data[pos + 3] < 25
+    : (pos: number) =>
+        Math.abs(data[pos] - startR) <= 35 &&
+        Math.abs(data[pos + 1] - startG) <= 35 &&
+        Math.abs(data[pos + 2] - startB) <= 35 &&
+        Math.abs(data[pos + 3] - startA) <= 35;
 
-    return (
-      Math.abs(r - startR) < 30 &&
-      Math.abs(g - startG) < 30 &&
-      Math.abs(b - startB) < 30 &&
-      Math.abs(a - startA) < 30
-    );
-  }
+  const totalPixels = width * height;
+  const visited = new Uint8Array(totalPixels);
+  const stack = new Int32Array(totalPixels);
+  let stackPtr = 0;
 
-  const stack: [number, number][] = [[px, py]];
-  const visited = new Uint8Array(width * height);
+  const startIdx = py * width + px;
+  stack[stackPtr++] = startIdx;
+  visited[startIdx] = 1;
 
-  let count = 0;
-  const maxPixels = width * height;
-
-  while (stack.length > 0 && count < maxPixels) {
-    const [x, y] = stack.pop()!;
-    const idx = y * width + x;
-
-    if (visited[idx]) continue;
-    visited[idx] = 1;
-    count++;
-
+  while (stackPtr > 0) {
+    const idx = stack[--stackPtr];
+    const x = idx % width;
+    const y = (idx / width) | 0;
     const pos = idx * 4;
-    if (!colorMatch(pos)) continue;
 
-    // Fill pixel
     data[pos] = targetR;
     data[pos + 1] = targetG;
     data[pos + 2] = targetB;
     data[pos + 3] = targetA;
 
-    if (x > 0) stack.push([x - 1, y]);
-    if (x < width - 1) stack.push([x + 1, y]);
-    if (y > 0) stack.push([x, y - 1]);
-    if (y < height - 1) stack.push([x, y + 1]);
+    // West
+    if (x > 0) {
+      const nIdx = idx - 1;
+      if (!visited[nIdx]) {
+        visited[nIdx] = 1;
+        if (isMatch(nIdx * 4)) {
+          stack[stackPtr++] = nIdx;
+        }
+      }
+    }
+    // East
+    if (x < width - 1) {
+      const nIdx = idx + 1;
+      if (!visited[nIdx]) {
+        visited[nIdx] = 1;
+        if (isMatch(nIdx * 4)) {
+          stack[stackPtr++] = nIdx;
+        }
+      }
+    }
+    // North
+    if (y > 0) {
+      const nIdx = idx - width;
+      if (!visited[nIdx]) {
+        visited[nIdx] = 1;
+        if (isMatch(nIdx * 4)) {
+          stack[stackPtr++] = nIdx;
+        }
+      }
+    }
+    // South
+    if (y < height - 1) {
+      const nIdx = idx + width;
+      if (!visited[nIdx]) {
+        visited[nIdx] = 1;
+        if (isMatch(nIdx * 4)) {
+          stack[stackPtr++] = nIdx;
+        }
+      }
+    }
   }
 
   ctx.putImageData(imgData, 0, 0);
@@ -470,7 +444,9 @@ export function floodFill(
 export function renderDrawEvent(
   ctx: CanvasRenderingContext2D,
   event: DrawEvent,
-  onImageLoad?: () => void
+  onImageLoad?: () => void,
+  zoom: number = 1,
+  pan: Point = { x: 0, y: 0 }
 ): void {
   if (event.type !== 'draw_end' || event.isDeleted) return;
   if (event.points.length === 0) return;
@@ -502,7 +478,7 @@ export function renderDrawEvent(
       break;
     case 'fill':
       if (ctx.canvas) {
-        floodFill(ctx, ctx.canvas, start.x, start.y, color);
+        floodFill(ctx, ctx.canvas, start.x, start.y, color, zoom, pan);
       }
       break;
     case 'text':
@@ -518,16 +494,6 @@ export function renderDrawEvent(
           event.isItalic ?? false
         );
       }
-      break;
-    case 'sticky':
-      drawStickyNote(
-        ctx,
-        start,
-        event.text ?? '',
-        event.noteColor ?? '#FEF08A',
-        event.width ?? 180,
-        event.height ?? 180
-      );
       break;
     case 'image':
       if (event.imageUrl) {
@@ -551,17 +517,19 @@ export function replayHistory(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
   history: DrawEvent[],
-  onImageLoad?: () => void
+  onImageLoad?: () => void,
+  zoom: number = 1,
+  pan: Point = { x: 0, y: 0 }
 ): void {
-  const dpr = window.devicePixelRatio || 1;
-  ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-
   for (const event of history) {
     if (event.isDeleted) continue;
     if (event.type === 'clear') {
-      ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
     } else {
-      renderDrawEvent(ctx, event, onImageLoad);
+      renderDrawEvent(ctx, event, onImageLoad, zoom, pan);
     }
   }
 }

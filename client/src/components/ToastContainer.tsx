@@ -15,10 +15,10 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts }) => {
           key={toast.id}
           className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-medium shadow-2xl backdrop-blur-md animate-slide-up pointer-events-auto ${
             toast.type === 'info'
-              ? 'bg-gray-900/90 border-blue-500/40 text-blue-400'
+              ? 'bg-zinc-900/90 border-zinc-600/60 text-zinc-200'
               : toast.type === 'warning'
-              ? 'bg-gray-900/90 border-yellow-500/40 text-yellow-400'
-              : 'bg-gray-900/90 border-green-500/40 text-green-400'
+              ? 'bg-zinc-900/90 border-amber-500/40 text-amber-400'
+              : 'bg-zinc-900/90 border-emerald-500/40 text-emerald-400'
           }`}
         >
           <span className="w-2 h-2 rounded-full bg-current animate-pulse" />

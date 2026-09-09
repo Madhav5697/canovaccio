@@ -11,7 +11,6 @@ export type DrawTool =
   | 'arrow'
   | 'fill'
   | 'text'
-  | 'sticky'
   | 'image'
   | 'select'
   | 'pan';
@@ -103,7 +102,6 @@ export interface DrawingState {
   fontFamily: string;
   isBold: boolean;
   isItalic: boolean;
-  stickyColor: string;
 }
 
 export type CanvasAction =

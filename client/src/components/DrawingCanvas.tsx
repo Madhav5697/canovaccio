@@ -18,7 +18,6 @@ interface DrawingCanvasProps {
   fontFamily: string;
   isBold: boolean;
   isItalic: boolean;
-  stickyColor: string;
   drawingHistory: DrawEvent[];
   remoteCursors: Map<string, CursorPosition>;
   onToolChange: (tool: DrawTool) => void;
@@ -28,7 +27,6 @@ interface DrawingCanvasProps {
   onFontFamilyChange: (family: string) => void;
   onBoldToggle: () => void;
   onItalicToggle: () => void;
-  onStickyColorChange: (color: string) => void;
   onExport: () => void;
   onHelp: () => void;
   onRemoteDrawEvent: (handler: (event: DrawEvent) => void) => void;
@@ -38,15 +36,8 @@ interface DrawingCanvasProps {
   onRemoteUndo: (handler: (strokeId: string) => void) => void;
   onRemoteRedo: (handler: (strokeId: string) => void) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+  isDark?: boolean;
 }
-
-const STICKY_PALETTE = [
-  { label: 'Yellow', color: '#FEF08A' },
-  { label: 'Green', color: '#BBF7D0' },
-  { label: 'Blue', color: '#BFDBFE' },
-  { label: 'Pink', color: '#FBCFE8' },
-  { label: 'Purple', color: '#DDD6FE' },
-];
 
 export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   roomId,
@@ -60,7 +51,6 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   fontFamily,
   isBold,
   isItalic,
-  stickyColor,
   drawingHistory,
   remoteCursors,
   onToolChange,
@@ -70,7 +60,6 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   onFontFamilyChange,
   onBoldToggle,
   onItalicToggle,
-  onStickyColorChange,
   onExport,
   onHelp,
   onRemoteDrawEvent,
@@ -80,6 +69,7 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   onRemoteUndo,
   onRemoteRedo,
   onCanvasReady,
+  isDark = true,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [inlineText, setInlineText] = useState('');
@@ -123,7 +113,6 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     fontFamily,
     isBold,
     isItalic,
-    stickyColor,
     drawingHistory,
   });
 
@@ -150,12 +139,16 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     handleRemoteRedo,
   ]);
 
+  // Run ONCE on mount only — initCanvas calls setupCanvas which sets canvas.width,
+  // which CLEARS the canvas. If this effect re-ran (e.g. on every cursor move causing
+  // parent re-renders with a new onCanvasReady ref), it would wipe all drawings.
   useEffect(() => {
     initCanvas();
     if (canvasRef.current && onCanvasReady) {
       onCanvasReady(canvasRef.current);
     }
-  }, [initCanvas, onCanvasReady, canvasRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — only run on mount
 
   // Attach mouse/touch events to canvas
   const attachEvents = useCallback(() => {
@@ -289,28 +282,36 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         onRedo={redo}
         onExport={onExport}
         onHelp={onHelp}
+        isDark={isDark}
       />
 
       {/* Main Canvas Container */}
       <div
         ref={containerRef}
-        className="relative flex-1 rounded-2xl overflow-hidden border border-gray-700/60 bg-white shadow-2xl flex flex-col"
+        className={`relative flex-1 rounded-2xl overflow-hidden border shadow-2xl flex flex-col transition-colors duration-300 ${
+          isDark ? 'border-zinc-800 bg-white' : 'border-gray-200 bg-white'
+        }`}
         style={{ touchAction: 'none' }}
       >
+
         {/* Top Floating Color & Tool Options Bar */}
         <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-none flex-wrap gap-2">
           {/* Color Picker Bar */}
           <div className="pointer-events-auto">
-            <ColorPickerBar color={color} onChange={onColorChange} />
+            <ColorPickerBar color={color} onChange={onColorChange} isDark={isDark} />
           </div>
 
           {/* Text Tool Options Bar (visible when tool is 'text') */}
           {tool === 'text' && (
-            <div className="pointer-events-auto flex items-center gap-2 p-1.5 bg-gray-900/90 border border-gray-700/60 rounded-2xl shadow-xl backdrop-blur-md text-white text-xs">
+            <div className={`pointer-events-auto flex items-center gap-2 p-1.5 border rounded-2xl shadow-xl backdrop-blur-md text-xs transition-colors duration-300 ${
+              isDark ? 'bg-zinc-900/90 border-zinc-800 text-zinc-100' : 'bg-white/90 border-gray-200 text-gray-900'
+            }`}>
               <select
                 value={fontSize}
                 onChange={(e) => onFontSizeChange(Number(e.target.value))}
-                className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-white focus:outline-none"
+                className={`border rounded-lg px-2 py-1 focus:outline-none ${
+                  isDark ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900'
+                }`}
               >
                 {[14, 18, 24, 32, 48, 64].map((s) => (
                   <option key={s} value={s}>
@@ -322,7 +323,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
               <select
                 value={fontFamily}
                 onChange={(e) => onFontFamilyChange(e.target.value)}
-                className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-white focus:outline-none"
+                className={`border rounded-lg px-2 py-1 focus:outline-none ${
+                  isDark ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-gray-100 border-gray-200 text-gray-900'
+                }`}
               >
                 <option value="Inter, sans-serif">Sans-Serif</option>
                 <option value="Georgia, serif">Serif</option>
@@ -335,8 +338,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 onClick={onBoldToggle}
                 className={`px-2 py-1 rounded-lg font-bold border transition-colors ${
                   isBold
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                    ? isDark
+                      ? 'bg-zinc-100 border-zinc-200 text-zinc-950'
+                      : 'bg-zinc-900 border-zinc-800 text-white'
+                    : isDark
+                    ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
+                    : 'bg-gray-100 border-gray-200 text-gray-500 hover:text-black'
                 }`}
               >
                 B
@@ -347,8 +354,12 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 onClick={onItalicToggle}
                 className={`px-2 py-1 rounded-lg italic font-serif border transition-colors ${
                   isItalic
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                    ? isDark
+                      ? 'bg-zinc-100 border-zinc-200 text-zinc-950'
+                      : 'bg-zinc-900 border-zinc-800 text-white'
+                    : isDark
+                    ? 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white'
+                    : 'bg-gray-100 border-gray-200 text-gray-500 hover:text-black'
                 }`}
               >
                 I
@@ -356,34 +367,17 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             </div>
           )}
 
-          {/* Sticky Note Palette (visible when tool is 'sticky') */}
-          {tool === 'sticky' && (
-            <div className="pointer-events-auto flex items-center gap-1.5 p-1.5 bg-gray-900/90 border border-gray-700/60 rounded-2xl shadow-xl backdrop-blur-md">
-              <span className="text-[10px] uppercase font-bold text-gray-400 px-1">Note Color:</span>
-              {STICKY_PALETTE.map((p) => (
-                <button
-                  key={p.color}
-                  type="button"
-                  onClick={() => onStickyColorChange(p.color)}
-                  className={`w-5 h-5 rounded-md border border-gray-700 transition-transform ${
-                    stickyColor === p.color ? 'ring-2 ring-blue-400 scale-110' : 'hover:scale-110'
-                  }`}
-                  style={{ backgroundColor: p.color }}
-                  title={p.label}
-                />
-              ))}
-            </div>
-          )}
-
           {/* Selected Object Banner (when object is selected) */}
           {selectedObjectId && (
-            <div className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 bg-gray-900/90 border border-blue-500/50 rounded-2xl shadow-xl backdrop-blur-md text-white text-xs">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+            <div className={`pointer-events-auto flex items-center gap-2 px-3 py-1.5 border rounded-2xl shadow-xl backdrop-blur-md text-xs transition-colors duration-300 ${
+              isDark ? 'bg-zinc-900/90 border-zinc-700/60 text-zinc-100' : 'bg-white/90 border-gray-300/80 text-gray-900'
+            }`}>
+              <span className={`w-2 h-2 rounded-full animate-pulse ${isDark ? 'bg-zinc-300' : 'bg-zinc-700'}`} />
               <span>Object Selected</span>
               <button
                 type="button"
                 onClick={deleteSelectedObject}
-                className="ml-2 px-2 py-0.5 bg-red-600/80 hover:bg-red-600 rounded-md font-semibold text-white transition-colors"
+                className="ml-2 px-2 py-0.5 bg-rose-600/80 hover:bg-rose-600 rounded-md font-semibold text-white transition-colors"
               >
                 Delete
               </button>
@@ -419,7 +413,9 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
         {/* Text Tool Floating Input Modal */}
         {textInputState && (
           <div
-            className="absolute z-40 p-2 bg-gray-900/95 border border-blue-500 rounded-xl shadow-2xl backdrop-blur-md animate-scale-up"
+            className={`absolute z-40 p-2 border rounded-xl shadow-2xl backdrop-blur-md animate-scale-up ${
+              isDark ? 'bg-zinc-900/95 border-zinc-700' : 'bg-white/95 border-gray-300'
+            }`}
             style={{
               left: Math.max(10, textInputState.x - (containerRef.current?.getBoundingClientRect().left ?? 0)),
               top: Math.max(10, textInputState.y - (containerRef.current?.getBoundingClientRect().top ?? 0)),
@@ -432,19 +428,25 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
                 onChange={(e) => setInlineText(e.target.value)}
                 placeholder="Type your text here…"
                 rows={2}
-                className="w-56 p-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                className={`w-56 p-2 border rounded-lg text-sm focus:outline-none focus:ring-1 resize-none ${
+                  isDark
+                    ? 'bg-zinc-800 border-zinc-700 text-white focus:ring-zinc-500'
+                    : 'bg-gray-50 border-gray-200 text-gray-900 focus:ring-gray-400'
+                }`}
               />
               <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setTextInputState(null)}
-                  className="px-2 py-1 text-xs text-gray-400 hover:text-white"
+                  className={`px-2 py-1 text-xs ${isDark ? 'text-zinc-400 hover:text-white' : 'text-gray-500 hover:text-black'}`}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-semibold"
+                  className={`px-3 py-1 rounded-md text-xs font-semibold text-white transition-colors ${
+                    isDark ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-zinc-900 hover:bg-black'
+                  }`}
                 >
                   Place Text
                 </button>
@@ -453,26 +455,25 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
           </div>
         )}
 
-        {/* Empty state hint */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-          <p className="text-gray-300/25 text-2xl font-light tracking-wide">
-            Start sketching, collaborating, or creating notes…
-          </p>
-        </div>
+
 
         {/* Bottom Right Floating Zoom & Pan Navigation Controls */}
-        <div className="absolute bottom-4 right-4 z-30 flex items-center gap-1.5 p-1.5 bg-gray-900/90 border border-gray-700/60 rounded-2xl shadow-xl backdrop-blur-md text-white text-xs">
+        <div className={`absolute bottom-4 right-4 z-30 flex items-center gap-1.5 p-1.5 border rounded-2xl shadow-xl backdrop-blur-md text-xs transition-colors duration-300 ${
+          isDark ? 'bg-zinc-900/90 border-zinc-800 text-zinc-100' : 'bg-white/90 border-gray-200 text-gray-900'
+        }`}>
           <button
             type="button"
             onClick={() => setZoom(zoom - 0.25)}
             disabled={zoom <= 0.25}
-            className="w-7 h-7 flex items-center justify-center bg-gray-800 hover:bg-gray-700 disabled:opacity-30 rounded-xl transition-colors font-bold text-sm"
+            className={`w-7 h-7 flex items-center justify-center disabled:opacity-30 rounded-xl transition-colors font-bold text-sm ${
+              isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
+            }`}
             aria-label="Zoom out"
           >
             −
           </button>
 
-          <span className="w-12 text-center font-mono font-bold text-blue-400">
+          <span className={`w-12 text-center font-mono font-bold ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>
             {Math.round(zoom * 100)}%
           </span>
 
@@ -480,18 +481,22 @@ export const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             type="button"
             onClick={() => setZoom(zoom + 0.25)}
             disabled={zoom >= 2.0}
-            className="w-7 h-7 flex items-center justify-center bg-gray-800 hover:bg-gray-700 disabled:opacity-30 rounded-xl transition-colors font-bold text-sm"
+            className={`w-7 h-7 flex items-center justify-center disabled:opacity-30 rounded-xl transition-colors font-bold text-sm ${
+              isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
+            }`}
             aria-label="Zoom in"
           >
             +
           </button>
 
-          <div className="w-px h-4 bg-gray-700/60 mx-0.5" />
+          <div className={`w-px h-4 mx-0.5 ${isDark ? 'bg-zinc-800' : 'bg-gray-200'}`} />
 
           <button
             type="button"
             onClick={resetZoom}
-            className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 rounded-xl font-medium text-[11px] text-gray-300 hover:text-white transition-colors"
+            className={`px-2.5 py-1 rounded-xl font-medium text-[11px] transition-colors ${
+              isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-black'
+            }`}
           >
             Reset
           </button>

@@ -27,7 +27,6 @@ export type DrawTool =
   | 'arrow'
   | 'fill'
   | 'text'
-  | 'sticky'
   | 'image'
   | 'select'
   | 'pan';

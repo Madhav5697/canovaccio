@@ -221,9 +221,6 @@ export function getToolCursor(tool: DrawTool, color: string): string {
     case 'text':
       return 'text';
 
-    case 'sticky':
-      return 'cell';
-
     case 'select':
       return 'default';
 

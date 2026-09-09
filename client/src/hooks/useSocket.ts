@@ -8,17 +8,21 @@ import {
   ObjectUpdatePayload,
   ObjectDeletePayload,
   ToastNotification,
+  RoomJoinedPayload,
 } from '../types';
 
 /**
  * useSocket — manages socket connection lifecycle, room state, cursors, presence toasts, and object events.
  */
 export function useSocket() {
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>(() =>
+    socketService.isConnected() ? 'connected' : 'connecting'
+  );
+
   const [roomState, setRoomState] = useState<RoomState>({
     roomId: null,
     users: [],
-    isConnected: false,
+    isConnected: socketService.isConnected(),
     isJoined: false,
     error: null,
     drawingHistory: [],
@@ -42,17 +46,20 @@ export function useSocket() {
     }, 4000);
   }, []);
 
-  // Connect to socket server
-  const connect = useCallback(() => {
-    setConnectionStatus('connecting');
+  useEffect(() => {
     const socket = socketService.connect();
 
-    socket.on('connect', () => {
+    if (socket.connected) {
       setConnectionStatus('connected');
       setRoomState((prev) => ({ ...prev, isConnected: true, error: null }));
-    });
+    }
 
-    socket.on('disconnect', (reason) => {
+    const handleConnect = () => {
+      setConnectionStatus('connected');
+      setRoomState((prev) => ({ ...prev, isConnected: true, error: null }));
+    };
+
+    const handleDisconnect = (reason: string) => {
       setConnectionStatus('disconnected');
       setRoomState((prev) => ({
         ...prev,
@@ -61,19 +68,18 @@ export function useSocket() {
       }));
       setRemoteCursors(new Map());
       console.log('[Socket] Disconnected:', reason);
-    });
+    };
 
-    socket.on('connect_error', (err) => {
+    const handleConnectError = (err: Error) => {
       setConnectionStatus('error');
       setRoomState((prev) => ({
         ...prev,
         isConnected: false,
         error: `Cannot connect to server: ${err.message}`,
       }));
-    });
+    };
 
-    // Room events
-    socket.on('room:joined', (data) => {
+    const handleRoomJoined = (data: RoomJoinedPayload) => {
       setRoomState((prev) => ({
         ...prev,
         roomId: data.roomId,
@@ -82,80 +88,101 @@ export function useSocket() {
         error: null,
         drawingHistory: data.drawingHistory,
       }));
-    });
+    };
 
-    socket.on('room:error', (data) => {
+    const handleRoomError = (data: { message: string }) => {
       setRoomState((prev) => ({
         ...prev,
         error: data.message,
       }));
-    });
+    };
 
-    socket.on('room:users_updated', (data) => {
+    const handleUsersUpdated = (data: { users: UserInfo[]; count: number }) => {
       setRoomState((prev) => ({
         ...prev,
-        users: data.users as UserInfo[],
+        users: data.users,
       }));
-    });
+    };
 
-    // Presence toast events
-    socket.on('user:joined_toast', (data) => {
+    const handleUserJoinedToast = (data: { userId: string }) => {
       addToast(`${data.userId} joined the room`, 'info');
-    });
+    };
 
-    socket.on('user:left_toast', (data) => {
+    const handleUserLeftToast = (data: { userId: string }) => {
       addToast(`${data.userId} left the room`, 'warning');
       setRemoteCursors((prev) => {
         const next = new Map(prev);
         next.delete(data.userId);
         return next;
       });
-    });
+    };
 
-    // Cursor position updates
-    socket.on('cursor:update', (cursor) => {
+    const handleCursorUpdate = (cursor: CursorPosition) => {
       setRemoteCursors((prev) => {
         const next = new Map(prev);
         next.set(cursor.userId, cursor);
         return next;
       });
-    });
-
-    // Drawing & object events
-    socket.on('draw:event', (event) => {
-      onDrawEventRef.current?.(event);
-    });
-
-    socket.on('draw:clear', () => {
-      onClearRef.current?.();
-    });
-
-    socket.on('draw:undo', (data) => {
-      onUndoRef.current?.(data.strokeId);
-    });
-
-    socket.on('draw:redo', (data) => {
-      onRedoRef.current?.(data.strokeId);
-    });
-
-    socket.on('object:update', (payload) => {
-      onObjectUpdateRef.current?.(payload);
-    });
-
-    socket.on('object:delete', (payload) => {
-      onObjectDeleteRef.current?.(payload);
-    });
-
-    return socket;
-  }, [addToast]);
-
-  useEffect(() => {
-    const socket = connect();
-    return () => {
-      socket.removeAllListeners();
-      socketService.disconnect();
     };
-  }, [connect]);
+
+    const handleDrawEvent = (event: DrawEvent) => {
+      onDrawEventRef.current?.(event);
+    };
+
+    const handleDrawClear = () => {
+      onClearRef.current?.();
+    };
+
+    const handleDrawUndo = (data: { strokeId: string }) => {
+      onUndoRef.current?.(data.strokeId);
+    };
+
+    const handleDrawRedo = (data: { strokeId: string }) => {
+      onRedoRef.current?.(data.strokeId);
+    };
+
+    const handleObjectUpdate = (payload: ObjectUpdatePayload) => {
+      onObjectUpdateRef.current?.(payload);
+    };
+
+    const handleObjectDelete = (payload: ObjectDeletePayload) => {
+      onObjectDeleteRef.current?.(payload);
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleConnectError);
+    socket.on('room:joined', handleRoomJoined);
+    socket.on('room:error', handleRoomError);
+    socket.on('room:users_updated', handleUsersUpdated);
+    socket.on('user:joined_toast', handleUserJoinedToast);
+    socket.on('user:left_toast', handleUserLeftToast);
+    socket.on('cursor:update', handleCursorUpdate);
+    socket.on('draw:event', handleDrawEvent);
+    socket.on('draw:clear', handleDrawClear);
+    socket.on('draw:undo', handleDrawUndo);
+    socket.on('draw:redo', handleDrawRedo);
+    socket.on('object:update', handleObjectUpdate);
+    socket.on('object:delete', handleObjectDelete);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleConnectError);
+      socket.off('room:joined', handleRoomJoined);
+      socket.off('room:error', handleRoomError);
+      socket.off('room:users_updated', handleUsersUpdated);
+      socket.off('user:joined_toast', handleUserJoinedToast);
+      socket.off('user:left_toast', handleUserLeftToast);
+      socket.off('cursor:update', handleCursorUpdate);
+      socket.off('draw:event', handleDrawEvent);
+      socket.off('draw:clear', handleDrawClear);
+      socket.off('draw:undo', handleDrawUndo);
+      socket.off('draw:redo', handleDrawRedo);
+      socket.off('object:update', handleObjectUpdate);
+      socket.off('object:delete', handleObjectDelete);
+    };
+  }, [addToast]);
 
   const createRoom = useCallback(async (userId: string) => {
     try {
@@ -202,7 +229,6 @@ export function useSocket() {
     setRoomState((prev) => ({ ...prev, error: null }));
   }, []);
 
-  // Register canvas callbacks
   const setDrawEventHandler = useCallback((handler: (event: DrawEvent) => void) => {
     onDrawEventRef.current = handler;
   }, []);

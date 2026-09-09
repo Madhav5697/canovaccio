@@ -44,7 +44,6 @@ function isValidDrawEvent(event: unknown): event is DrawEvent {
     'arrow',
     'fill',
     'text',
-    'sticky',
     'image',
     'select',
     'pan',

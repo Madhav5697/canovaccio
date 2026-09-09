@@ -4,6 +4,7 @@ import { Tooltip } from './Tooltip';
 interface ColorPickerBarProps {
   color: string;
   onChange: (color: string) => void;
+  isDark?: boolean;
 }
 
 const PRESET_PALETTE = [
@@ -12,7 +13,7 @@ const PRESET_PALETTE = [
   '#6366F1', '#8B5CF6', '#EC4899', '#64748B',
 ];
 
-export const ColorPickerBar: React.FC<ColorPickerBarProps> = ({ color, onChange }) => {
+export const ColorPickerBar: React.FC<ColorPickerBarProps> = ({ color, onChange, isDark = true }) => {
   const [recentColors, setRecentColors] = useState<string[]>([
     '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'
   ]);
@@ -55,12 +56,18 @@ export const ColorPickerBar: React.FC<ColorPickerBarProps> = ({ color, onChange 
   };
 
   return (
-    <div className="flex items-center gap-2 p-1.5 bg-gray-900/90 border border-gray-700/60 rounded-2xl shadow-xl backdrop-blur-md">
+    <div className={`flex items-center gap-2 p-1.5 border rounded-2xl shadow-xl backdrop-blur-md transition-colors duration-300 ${
+      isDark
+        ? 'bg-zinc-900/90 border-zinc-800 text-zinc-100 shadow-2xl'
+        : 'bg-white/90 border-gray-200/90 text-gray-900 shadow-xl'
+    }`}>
       {/* Current Color Indicator & Native Picker */}
       <Tooltip content="Custom color picker">
         <label className="relative flex items-center justify-center cursor-pointer p-0.5">
           <div
-            className="w-7 h-7 rounded-xl border-2 border-gray-600 shadow-inner transition-transform hover:scale-110"
+            className={`w-7 h-7 rounded-xl border-2 shadow-inner transition-transform hover:scale-110 ${
+              isDark ? 'border-zinc-600' : 'border-gray-300'
+            }`}
             style={{ backgroundColor: color }}
           />
           <input
@@ -78,7 +85,11 @@ export const ColorPickerBar: React.FC<ColorPickerBarProps> = ({ color, onChange 
         <button
           type="button"
           onClick={handleEyeDropper}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+          className={`p-1.5 rounded-lg transition-colors ${
+            isDark
+              ? 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              : 'text-gray-500 hover:text-black hover:bg-gray-100'
+          }`}
           aria-label="Eyedropper"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -88,18 +99,22 @@ export const ColorPickerBar: React.FC<ColorPickerBarProps> = ({ color, onChange 
       </Tooltip>
 
       {/* Hex input */}
-      <div className="flex items-center bg-gray-800 border border-gray-700 rounded-lg px-2 py-0.5 text-xs font-mono">
+      <div className={`flex items-center border rounded-lg px-2 py-0.5 text-xs font-mono ${
+        isDark ? 'bg-zinc-800 border-zinc-700' : 'bg-gray-100 border-gray-200'
+      }`}>
         <input
           type="text"
           value={hexInput}
           onChange={handleHexChange}
           maxLength={7}
-          className="w-16 bg-transparent text-white focus:outline-none uppercase"
+          className={`w-16 bg-transparent focus:outline-none uppercase font-semibold ${
+            isDark ? 'text-white' : 'text-gray-900'
+          }`}
           placeholder="#3B82F6"
         />
       </div>
 
-      <div className="w-px h-5 bg-gray-700/60" />
+      <div className={`w-px h-5 ${isDark ? 'bg-zinc-800' : 'bg-gray-200'}`} />
 
       {/* Preset palette */}
       <div className="flex items-center gap-1">
@@ -110,8 +125,10 @@ export const ColorPickerBar: React.FC<ColorPickerBarProps> = ({ color, onChange 
               onClick={() => handleSelectColor(c)}
               className={`w-5 h-5 rounded-md transition-all hover:scale-115 ${
                 color.toLowerCase() === c.toLowerCase()
-                  ? 'ring-2 ring-blue-400 ring-offset-1 ring-offset-gray-900 scale-110'
-                  : 'hover:opacity-90'
+                  ? isDark
+                    ? 'ring-2 ring-zinc-300 ring-offset-1 ring-offset-zinc-900 scale-110'
+                    : 'ring-2 ring-zinc-900 ring-offset-1 ring-offset-white scale-110'
+                  : 'hover:opacity-90 border border-black/10'
               }`}
               style={{ backgroundColor: c }}
               aria-label={`Color ${c}`}
@@ -120,17 +137,17 @@ export const ColorPickerBar: React.FC<ColorPickerBarProps> = ({ color, onChange 
         ))}
       </div>
 
-      <div className="w-px h-5 bg-gray-700/60" />
+      <div className={`w-px h-5 ${isDark ? 'bg-zinc-800' : 'bg-gray-200'}`} />
 
       {/* Recent colors */}
       <div className="flex items-center gap-1">
-        <span className="text-[10px] text-gray-400 uppercase font-semibold mr-1">Recent</span>
+        <span className={`text-[10px] uppercase font-semibold mr-1 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>Recent</span>
         {recentColors.map((c, i) => (
           <Tooltip key={`${c}-${i}`} content={c}>
             <button
               type="button"
               onClick={() => handleSelectColor(c)}
-              className="w-4 h-4 rounded-full border border-gray-700 transition-transform hover:scale-120"
+              className="w-4 h-4 rounded-full border border-gray-400/40 transition-transform hover:scale-120"
               style={{ backgroundColor: c }}
               aria-label={`Recent color ${c}`}
             />

@@ -4,19 +4,19 @@ import { isValidRoomId } from '../utils/helpers';
 // ── Icons ────────────────────────────────────────────────────────────────────
 
 const PlusIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="w-5 h-5">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4">
     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 );
 
 const ArrowRightIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
   </svg>
 );
 
 const SpinnerIcon = () => (
-  <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
   </svg>
@@ -28,6 +28,7 @@ interface RoomDialogProps {
   mode: 'create' | 'join';
   isLoading: boolean;
   error: string | null;
+  isDark?: boolean;
   onCreateRoom: () => void;
   onJoinRoom: (roomId: string) => void;
   onClose: () => void;
@@ -37,12 +38,16 @@ export const RoomDialog: React.FC<RoomDialogProps> = ({
   mode,
   isLoading,
   error,
+  isDark: isDarkProp,
   onCreateRoom,
   onJoinRoom,
   onClose,
 }) => {
   const [roomIdInput, setRoomIdInput] = useState('');
   const [inputError, setInputError] = useState('');
+
+  // Fallback to localStorage if isDark is not passed directly
+  const isDark = isDarkProp ?? (typeof window !== 'undefined' && localStorage.getItem('drawsync_theme') === 'dark');
 
   const handleJoinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,21 +74,29 @@ export const RoomDialog: React.FC<RoomDialogProps> = ({
   return (
     // Backdrop
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-fade-in"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-md bg-gray-900 border border-gray-700/60 rounded-2xl shadow-2xl animate-slide-up">
+      <div className={`w-full max-w-sm rounded-2xl border shadow-2xl animate-slide-up transition-colors duration-300 overflow-hidden ${
+        isDark
+          ? 'bg-[#121215] border-zinc-800 text-white shadow-black/80'
+          : 'bg-white border-gray-100 text-gray-900 shadow-gray-200'
+      }`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700/60">
-          <h2 className="text-xl font-semibold text-white">
-            {mode === 'create' ? '🎨 Create a Room' : '🚀 Join a Room'}
+        <div className={`flex items-center justify-between px-6 py-5 border-b transition-colors ${
+          isDark ? 'border-zinc-800/80' : 'border-gray-100'
+        }`}>
+          <h2 className="font-playfair italic font-bold text-lg tracking-tight">
+            {mode === 'create' ? 'Create a Room' : 'Join a Room'}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-300 transition-colors p-1 rounded-lg hover:bg-gray-800"
+            className={`p-1.5 rounded-lg transition-colors ${
+              isDark ? 'text-zinc-400 hover:text-white hover:bg-zinc-800' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'
+            }`}
             aria-label="Close dialog"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
@@ -92,41 +105,53 @@ export const RoomDialog: React.FC<RoomDialogProps> = ({
         {/* Content */}
         <div className="p-6">
           {mode === 'create' ? (
-            <div className="space-y-4">
-              <p className="text-gray-400 text-sm leading-relaxed">
+            <div className="space-y-5">
+              <p className={`text-sm leading-relaxed font-medium ${
+                isDark ? 'text-zinc-300' : 'text-gray-800'
+              }`}>
                 A unique room ID will be generated for you. Share it with anyone to draw together in real time.
               </p>
               <button
                 onClick={onCreateRoom}
                 disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-500/20"
+                className={`w-full flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isDark
+                    ? 'bg-white text-zinc-900 hover:bg-zinc-200'
+                    : 'bg-gray-900 text-white hover:bg-gray-800'
+                }`}
               >
                 {isLoading ? <SpinnerIcon /> : <PlusIcon />}
                 {isLoading ? 'Creating room…' : 'Create Room'}
               </button>
             </div>
           ) : (
-            <form onSubmit={handleJoinSubmit} className="space-y-4">
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Enter the 6-character room ID shared by someone else.
+            <form onSubmit={handleJoinSubmit} className="space-y-5">
+              <p className={`text-sm leading-relaxed font-medium ${
+                isDark ? 'text-zinc-300' : 'text-gray-800'
+              }`}>
+                Enter the 6-character room ID shared by your teammate.
               </p>
               <div>
                 <input
                   type="text"
                   value={roomIdInput}
                   onChange={handleInputChange}
-                  placeholder="E.g. AB12CD"
+                  placeholder="AB12CD"
                   maxLength={6}
                   autoFocus
-                  className={`w-full px-4 py-3 bg-gray-800 border ${
-                    inputError ? 'border-red-500' : 'border-gray-700'
-                  } rounded-xl text-white text-center text-2xl font-mono tracking-[0.3em] placeholder:text-gray-600 placeholder:text-sm placeholder:tracking-normal focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all`}
+                  className={`w-full px-4 py-3 border rounded-xl text-center text-xl font-mono tracking-[0.25em] placeholder:text-sm placeholder:tracking-normal focus:outline-none transition-all ${
+                    inputError
+                      ? 'border-red-500 ring-1 ring-red-500'
+                      : isDark
+                      ? 'bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-zinc-600'
+                      : 'bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-gray-900'
+                  }`}
                   aria-label="Room ID"
                   aria-invalid={!!inputError}
                   aria-describedby={inputError ? 'room-id-error' : undefined}
                 />
                 {inputError && (
-                  <p id="room-id-error" className="mt-1.5 text-xs text-red-400 flex items-center gap-1">
+                  <p id="room-id-error" className="mt-2 text-xs text-red-400 flex items-center justify-center gap-1">
                     <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 flex-shrink-0">
                       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
                     </svg>
@@ -137,7 +162,11 @@ export const RoomDialog: React.FC<RoomDialogProps> = ({
               <button
                 type="submit"
                 disabled={isLoading || roomIdInput.length !== 6}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-green-600 hover:bg-green-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all shadow-lg shadow-green-500/20"
+                className={`w-full flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isDark
+                    ? 'bg-white text-zinc-900 hover:bg-zinc-200'
+                    : 'bg-gray-900 text-white hover:bg-gray-800'
+                }`}
               >
                 {isLoading ? <SpinnerIcon /> : <ArrowRightIcon />}
                 {isLoading ? 'Joining room…' : 'Join Room'}
@@ -147,11 +176,13 @@ export const RoomDialog: React.FC<RoomDialogProps> = ({
 
           {/* Server error */}
           {error && (
-            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm flex items-start gap-2">
+            <div className={`mt-4 p-3 border rounded-xl text-xs flex items-start gap-2 ${
+              isDark ? 'bg-red-950/40 border-red-900/50 text-red-400' : 'bg-red-50 border-red-100 text-red-500'
+            }`}>
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 flex-shrink-0 mt-0.5">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
               </svg>
-              {error}
+              <span>{error}</span>
             </div>
           )}
         </div>

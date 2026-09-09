@@ -25,7 +25,6 @@ interface UseCanvasOptions {
   fontFamily: string;
   isBold: boolean;
   isItalic: boolean;
-  stickyColor: string;
   drawingHistory: DrawEvent[];
 }
 
@@ -40,7 +39,6 @@ export function useCanvas({
   fontFamily,
   isBold,
   isItalic,
-  stickyColor,
   drawingHistory,
 }: UseCanvasOptions) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -49,16 +47,50 @@ export function useCanvas({
   const currentStrokeRef = useRef<Point[]>([]);
   const currentStrokeIdRef = useRef<string>('');
 
-  // Zoom & Pan state
+  // Zoom & Pan state — keep both React state (for renders) AND refs (for stable callbacks)
   const [zoom, setZoomState] = useState<number>(1.0);
   const [pan, setPanState] = useState<Point>({ x: 0, y: 0 });
   const isPanningRef = useRef(false);
   const lastPanPointRef = useRef<Point>({ x: 0, y: 0 });
 
+  // Always-current refs — callbacks read from here to avoid stale closures
+  const panRef = useRef<Point>({ x: 0, y: 0 });
+  const zoomRef = useRef<number>(1.0);
+
+  // Keep refs in sync with state
+  useEffect(() => { panRef.current = pan; }, [pan]);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
+  // Tool / drawing settings refs — so pointer handlers don't need to be recreated on tool change
+  const toolRef = useRef<DrawTool>(tool);
+  const colorRef = useRef<string>(color);
+  const brushSizeRef = useRef<number>(brushSize);
+  const fontSizeRef = useRef<number>(fontSize);
+  const fontFamilyRef = useRef<string>(fontFamily);
+  const isBoldRef = useRef<boolean>(isBold);
+  const isItalicRef = useRef<boolean>(isItalic);
+  const roomIdRef = useRef<string | null>(roomId);
+  const userIdRef = useRef<string>(userId);
+  const userColorRef = useRef<string>(userColor);
+
+  useEffect(() => { toolRef.current = tool; }, [tool]);
+  useEffect(() => { colorRef.current = color; }, [color]);
+  useEffect(() => { brushSizeRef.current = brushSize; }, [brushSize]);
+  useEffect(() => { fontSizeRef.current = fontSize; }, [fontSize]);
+  useEffect(() => { fontFamilyRef.current = fontFamily; }, [fontFamily]);
+  useEffect(() => { isBoldRef.current = isBold; }, [isBold]);
+  useEffect(() => { isItalicRef.current = isItalic; }, [isItalic]);
+  useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
+  useEffect(() => { userIdRef.current = userId; }, [userId]);
+  useEffect(() => { userColorRef.current = userColor; }, [userColor]);
+
   // Selection & Object Manipulation
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const selectedObjectIdRef = useRef<string | null>(null);
   const isDraggingObjectRef = useRef(false);
   const dragOffsetRef = useRef<Point>({ x: 0, y: 0 });
+
+  useEffect(() => { selectedObjectIdRef.current = selectedObjectId; }, [selectedObjectId]);
 
   // Text tool active input trigger
   const [textInputState, setTextInputState] = useState<{
@@ -79,6 +111,39 @@ export function useCanvas({
   const previewCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   // Initialize canvas
+  // Replay history — reads pan/zoom from refs, so it's stable
+  const redrawAll = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!canvas || !ctx) return;
+
+    const pan = panRef.current;
+    const zoom = zoomRef.current;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(pan.x, pan.y);
+    ctx.scale(zoom, zoom);
+
+    replayHistory(
+      ctx,
+      canvas,
+      localHistoryRef.current,
+      () => {
+        redrawAll();
+      },
+      zoom,
+      pan
+    );
+
+    ctx.restore();
+  }, []); // stable — no dependencies needed
+
+  // Initialize canvas
   const initCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -88,30 +153,8 @@ export function useCanvas({
     if (preview) {
       previewCtxRef.current = setupCanvas(preview);
     }
-  }, []);
-
-  // Replay history
-  const redrawAll = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = ctxRef.current;
-    if (!canvas || !ctx) return;
-
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const dpr = window.devicePixelRatio || 1;
-    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(pan.x, pan.y);
-    ctx.scale(zoom, zoom);
-
-    replayHistory(ctx, canvas, localHistoryRef.current, () => {
-      redrawAll();
-    });
-
-    ctx.restore();
-  }, [pan.x, pan.y, zoom]);
+    redrawAll();
+  }, [redrawAll]);
 
   useEffect(() => {
     localHistoryRef.current = [...drawingHistory];
@@ -121,6 +164,11 @@ export function useCanvas({
       .map((e) => e.strokeId);
     setUndoStack(strokeIds);
   }, [drawingHistory, redrawAll]);
+
+  // Redraw when pan or zoom changes (triggered by state changes)
+  useEffect(() => {
+    redrawAll();
+  }, [pan, zoom, redrawAll]);
 
   // Handle window resize
   useEffect(() => {
@@ -149,42 +197,47 @@ export function useCanvas({
   }, []);
 
   // Convert raw screen point to canvas logical coordinates (taking pan & zoom into account)
-  const screenToCanvasPoint = useCallback(
-    (screenPoint: Point): Point => {
-      return {
-        x: (screenPoint.x - pan.x) / zoom,
-        y: (screenPoint.y - pan.y) / zoom,
-      };
-    },
-    [pan.x, pan.y, zoom]
-  );
+  // Reads from refs so it doesn't need to be in any dependency array
+  const screenToCanvasPoint = useCallback((screenPoint: Point): Point => {
+    const pan = panRef.current;
+    const zoom = zoomRef.current;
+    return {
+      x: (screenPoint.x - pan.x) / zoom,
+      y: (screenPoint.y - pan.y) / zoom,
+    };
+  }, []); // stable
 
-  // Live cursor broadcasting (throttled)
+  // Live cursor broadcasting (throttled) — stable, reads from refs
   const broadcastCursorMove = useMemo(
     () =>
       throttle((canvasPoint: Point) => {
-        if (!roomId) return;
+        if (!roomIdRef.current) return;
         socketService.sendCursorMove({
-          userId,
-          color: userColor,
+          userId: userIdRef.current,
+          color: userColorRef.current,
           x: canvasPoint.x,
           y: canvasPoint.y,
         });
       }, 30),
-    [roomId, userId, userColor]
+    [] // stable — reads from refs
   );
 
-  // Shape ghost preview rendering
+  // Shape ghost preview rendering — reads from refs
   const drawPreview = useCallback(
     (startPoint: Point, currentPoint: Point) => {
       const preview = previewCanvasRef.current;
       const ctx = previewCtxRef.current;
       if (!preview || !ctx) return;
 
-      const dpr = window.devicePixelRatio || 1;
+      const pan = panRef.current;
+      const zoom = zoomRef.current;
+      const tool = toolRef.current;
+      const color = colorRef.current;
+      const brushSize = brushSizeRef.current;
+
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, preview.width / dpr, preview.height / dpr);
+      ctx.clearRect(0, 0, preview.width, preview.height);
       ctx.restore();
 
       ctx.save();
@@ -205,26 +258,29 @@ export function useCanvas({
 
       ctx.restore();
     },
-    [pan.x, pan.y, zoom, tool, color, brushSize]
+    [] // stable — reads from refs
   );
 
   const clearPreview = useCallback(() => {
     const preview = previewCanvasRef.current;
     const ctx = previewCtxRef.current;
     if (!preview || !ctx) return;
-    const dpr = window.devicePixelRatio || 1;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, preview.width / dpr, preview.height / dpr);
+    ctx.clearRect(0, 0, preview.width, preview.height);
     ctx.restore();
   }, []);
 
   // ── Pointer down ─────────────────────────────────────────────────────────────
   const handlePointerDown = useCallback(
     (e: MouseEvent | TouchEvent) => {
-      if (!canvasRef.current || !roomId) return;
+      if (!canvasRef.current || !roomIdRef.current) return;
       const screenPoint = getCanvasPoint(e, canvasRef.current);
       const canvasPoint = screenToCanvasPoint(screenPoint);
+      const tool = toolRef.current;
+      const color = colorRef.current;
+      const brushSize = brushSizeRef.current;
+      const userId = userIdRef.current;
 
       // Pan tool or Middle click drag
       const isMiddleClick = e instanceof MouseEvent && e.button === 1;
@@ -253,8 +309,10 @@ export function useCanvas({
       // Fill tool
       if (tool === 'fill') {
         const ctx = ctxRef.current;
-        if (ctx) {
-          floodFill(ctx, canvasRef.current, canvasPoint.x, canvasPoint.y, color);
+        if (ctx && canvasRef.current) {
+          const pan = panRef.current;
+          const zoom = zoomRef.current;
+          floodFill(ctx, canvasRef.current, canvasPoint.x, canvasPoint.y, color, zoom, pan);
           const fillEvent: DrawEvent = {
             type: 'draw_end',
             tool: 'fill',
@@ -272,33 +330,8 @@ export function useCanvas({
         return;
       }
 
-      // Sticky Note tool
-      if (tool === 'sticky') {
-        const strokeId = generateId();
-        const stickyEvent: DrawEvent = {
-          type: 'draw_end',
-          tool: 'sticky',
-          color: '#1F2937',
-          brushSize: 1,
-          points: [canvasPoint],
-          userId,
-          timestamp: Date.now(),
-          strokeId,
-          text: 'Double click to edit',
-          noteColor: stickyColor,
-          width: 180,
-          height: 180,
-        };
-        socketService.sendDrawEvent(stickyEvent);
-        localHistoryRef.current.push(stickyEvent);
-        setUndoStack((prev) => [...prev, strokeId]);
-        redrawAll();
-        return;
-      }
-
       // Select tool
       if (tool === 'select') {
-        // Find clicked object
         const clickedObj = [...localHistoryRef.current]
           .reverse()
           .find((event) => {
@@ -346,13 +379,13 @@ export function useCanvas({
       };
       socketService.sendDrawEvent(startEvent);
     },
-    [roomId, tool, color, brushSize, userId, stickyColor, screenToCanvasPoint, redrawAll]
+    [screenToCanvasPoint, redrawAll] // stable refs used inside; only these stable callbacks needed
   );
 
   // ── Pointer move ─────────────────────────────────────────────────────────────
   const handlePointerMoveCore = useCallback(
     (e: MouseEvent | TouchEvent) => {
-      if (!canvasRef.current || !roomId) return;
+      if (!canvasRef.current || !roomIdRef.current) return;
       const screenPoint = getCanvasPoint(e, canvasRef.current);
       const canvasPoint = screenToCanvasPoint(screenPoint);
 
@@ -369,16 +402,17 @@ export function useCanvas({
       }
 
       // Dragging selected object
-      if (isDraggingObjectRef.current && selectedObjectId) {
-        const obj = localHistoryRef.current.find((e) => e.strokeId === selectedObjectId);
+      const selId = selectedObjectIdRef.current;
+      if (isDraggingObjectRef.current && selId) {
+        const obj = localHistoryRef.current.find((e) => e.strokeId === selId);
         if (obj && obj.points[0]) {
           const newX = canvasPoint.x - dragOffsetRef.current.x;
           const newY = canvasPoint.y - dragOffsetRef.current.y;
           obj.points[0] = { x: newX, y: newY };
 
           socketService.sendObjectUpdate({
-            userId,
-            strokeId: selectedObjectId,
+            userId: userIdRef.current,
+            strokeId: selId,
             points: obj.points,
             timestamp: Date.now(),
           });
@@ -391,6 +425,12 @@ export function useCanvas({
       if (!isDrawingRef.current) return;
       currentStrokeRef.current.push(canvasPoint);
       const points = currentStrokeRef.current;
+
+      const tool = toolRef.current;
+      const color = colorRef.current;
+      const brushSize = brushSizeRef.current;
+      const pan = panRef.current;
+      const zoom = zoomRef.current;
 
       if (tool === 'pencil' || tool === 'eraser' || tool === 'brush') {
         const ctx = ctxRef.current;
@@ -408,7 +448,7 @@ export function useCanvas({
           color,
           brushSize,
           points: points.slice(-3),
-          userId,
+          userId: userIdRef.current,
           timestamp: Date.now(),
           strokeId: currentStrokeIdRef.current,
         };
@@ -423,21 +463,7 @@ export function useCanvas({
         drawPreview(points[0], canvasPoint);
       }
     },
-    [
-      roomId,
-      tool,
-      color,
-      brushSize,
-      userId,
-      selectedObjectId,
-      pan.x,
-      pan.y,
-      zoom,
-      screenToCanvasPoint,
-      broadcastCursorMove,
-      drawPreview,
-      redrawAll,
-    ]
+    [screenToCanvasPoint, broadcastCursorMove, drawPreview, redrawAll] // all stable
   );
 
   const handlePointerMove = useMemo(
@@ -458,7 +484,7 @@ export function useCanvas({
         return;
       }
 
-      if (!isDrawingRef.current || !canvasRef.current || !roomId) return;
+      if (!isDrawingRef.current || !canvasRef.current || !roomIdRef.current) return;
       isDrawingRef.current = false;
 
       const screenPoint = getCanvasPoint(e, canvasRef.current);
@@ -470,6 +496,11 @@ export function useCanvas({
       }
 
       clearPreview();
+
+      const tool = toolRef.current;
+      const color = colorRef.current;
+      const brushSize = brushSizeRef.current;
+      const userId = userIdRef.current;
 
       if (
         tool === 'line' ||
@@ -517,7 +548,7 @@ export function useCanvas({
 
       currentStrokeRef.current = [];
     },
-    [roomId, tool, color, brushSize, userId, screenToCanvasPoint, clearPreview, redrawAll]
+    [screenToCanvasPoint, clearPreview, redrawAll] // all stable
   );
 
   // Submit Text entry
@@ -532,17 +563,17 @@ export function useCanvas({
       const textEvent: DrawEvent = {
         type: 'draw_end',
         tool: 'text',
-        color,
-        brushSize,
+        color: colorRef.current,
+        brushSize: brushSizeRef.current,
         points: [{ x: textInputState.canvasX, y: textInputState.canvasY }],
-        userId,
+        userId: userIdRef.current,
         timestamp: Date.now(),
         strokeId,
         text: textValue,
-        fontSize,
-        fontFamily,
-        isBold,
-        isItalic,
+        fontSize: fontSizeRef.current,
+        fontFamily: fontFamilyRef.current,
+        isBold: isBoldRef.current,
+        isItalic: isItalicRef.current,
       };
 
       socketService.sendDrawEvent(textEvent);
@@ -551,7 +582,7 @@ export function useCanvas({
       setTextInputState(null);
       redrawAll();
     },
-    [textInputState, color, brushSize, userId, fontSize, fontFamily, isBold, isItalic, redrawAll]
+    [textInputState, redrawAll]
   );
 
   // Upload Image handler
@@ -563,6 +594,8 @@ export function useCanvas({
         const imageUrl = evt.target?.result as string;
         if (!imageUrl) return;
 
+        const pan = panRef.current;
+        const zoom = zoomRef.current;
         const strokeId = generateId();
         const imageEvent: DrawEvent = {
           type: 'draw_end',
@@ -570,7 +603,7 @@ export function useCanvas({
           color: '#000000',
           brushSize: 1,
           points: [{ x: 100 - pan.x / zoom, y: 100 - pan.y / zoom }],
-          userId,
+          userId: userIdRef.current,
           timestamp: Date.now(),
           strokeId,
           imageUrl,
@@ -585,27 +618,34 @@ export function useCanvas({
       };
       reader.readAsDataURL(file);
     },
-    [pan.x, pan.y, zoom, userId, redrawAll]
+    [redrawAll]
   );
 
   // Delete selected object
   const deleteSelectedObject = useCallback(() => {
-    if (!selectedObjectId) return;
-    const strokeId = selectedObjectId;
+    if (!selectedObjectIdRef.current) return;
+    const strokeId = selectedObjectIdRef.current;
     setSelectedObjectId(null);
 
     localHistoryRef.current = localHistoryRef.current.filter((e) => e.strokeId !== strokeId);
-    socketService.sendObjectDelete({ userId, strokeId, timestamp: Date.now() });
+    socketService.sendObjectDelete({ userId: userIdRef.current, strokeId, timestamp: Date.now() });
     redrawAll();
-  }, [selectedObjectId, userId, redrawAll]);
+  }, [redrawAll]);
 
-  // Remote event handlers
+  // ── Remote event handlers (all stable — read from refs) ─────────────────────
+
   const handleRemoteDrawEvent = useCallback(
     (event: DrawEvent) => {
       const ctx = ctxRef.current;
       if (!ctx) return;
 
-      if (event.type === 'draw_move' && (event.tool === 'pencil' || event.tool === 'eraser' || event.tool === 'brush')) {
+      if (
+        (event.type === 'draw_start' || event.type === 'draw_move') &&
+        (event.tool === 'pencil' || event.tool === 'eraser' || event.tool === 'brush')
+      ) {
+        // Draw the incoming stroke segment directly — read current pan/zoom from refs
+        const pan = panRef.current;
+        const zoom = zoomRef.current;
         ctx.save();
         ctx.translate(pan.x, pan.y);
         ctx.scale(zoom, zoom);
@@ -616,7 +656,7 @@ export function useCanvas({
         redrawAll();
       }
     },
-    [pan.x, pan.y, zoom, redrawAll]
+    [redrawAll] // stable — redrawAll itself is stable
   );
 
   const handleRemoteObjectUpdate = useCallback(
@@ -636,12 +676,12 @@ export function useCanvas({
   const handleRemoteObjectDelete = useCallback(
     (payload: ObjectDeletePayload) => {
       localHistoryRef.current = localHistoryRef.current.filter((e) => e.strokeId !== payload.strokeId);
-      if (selectedObjectId === payload.strokeId) {
+      if (selectedObjectIdRef.current === payload.strokeId) {
         setSelectedObjectId(null);
       }
       redrawAll();
     },
-    [selectedObjectId, redrawAll]
+    [redrawAll]
   );
 
   const handleRemoteClear = useCallback(() => {
